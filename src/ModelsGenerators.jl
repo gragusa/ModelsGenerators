@@ -37,12 +37,9 @@ function randiv_ts(n::Int64; m::Int64 = 2, σ₁₂::Real = 0.9, ϕ::Real = .5, 
   ## ϕ ∈ {.1, .3, .5}   # control quality instrument, low value weak
   ## θ ∈ {-.9, -.5, 0. .5, .9}
 
-
-
   nt  = n+m+burnin
   out = (burnin + 1):(n + burnin)
   #    y <- u <- x <- v <- rep(0, nt + 1)
-
   y    = Array(Float64, nt+1)
   x    = Array(Float64, nt+1)
   x[1] = 0.0
