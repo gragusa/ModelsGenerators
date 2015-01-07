@@ -4,12 +4,12 @@ export
   randiv, randiv_ts
 
 # package code goes here
-function randiv(n::Int64        = 100;
-                m::Int64        = 5,
-                k::Int64        = 1,
-                theta0::Float64 = 0.0,
-                rho::Float64    = 0.9,
-                CP::Int64       = 20)
+function randiv(;n::Int64        = 100
+                m::Int64         = 5,
+                k::Int64         = 1,
+                theta0::Float64  = 0.0,
+                rho::Float64     = 0.9,
+                CP::Int64        = 20)
 
     ## Generate IV Model with CP
     tau     = fill(sqrt(CP/(m*n)), m)
