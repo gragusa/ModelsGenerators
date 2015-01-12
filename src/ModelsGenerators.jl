@@ -1,5 +1,7 @@
 module ModelsGenerators
 
+using Distributions
+
 export
   randiv, randiv_ts
 
@@ -52,7 +54,6 @@ function randiv(;n::Int64        = 100,
                 CP::Int64        = 20)
 
     ## Generate IV Model with CP
-
     randiv(n, m, k, theta0, rho, CP)
 end
 
@@ -62,7 +63,6 @@ function randiv(n::Int64        = 100,
                 theta0::Float64  = 0.0,
                 rho::Float64     = 0.9,
                 CP::Int64        = 20)
-
     ## Generate IV Model with CP
     tau     = fill(sqrt(CP/(m*n)), m)
     z       = randn(n, m)
@@ -76,6 +76,68 @@ function randiv(n::Int64        = 100,
     return epsilon, eta, z
 end
 
+
+function dgp_hh(n::Int64 = 200, m::Int64 = 2, s::Float64 = 0.2,
+                chisqmom::Int64 = 0, chisqdf::Int64 = 2, tmom::Int64 = 0,
+                tdf::Int64 = 3, minus::Bool = false)
+    ## Adapted from Hall and Horowitz (1996)
+    ## They consider s = {0.2, 0.4}
+    
+    X = randn(n, 1).*s
+    Z = randn(n, 1).*s
+    W = Z
+    if chisqmom > 0
+        z_chisq = (rand(Chisq(chisqdf), (n, chisqmom)) - chisqdf)./sqrt(2*chisqdf)
+        W = [W z_chisq]        
+    end
+    if tmom > 0
+        z_tstud = rand(TDist(tdf), (n, chisqmom))./sqrt(tdf/(tdf-2))
+        W = [W z_tstud]
+    end    
+    return X, Z, W
+end
+
+
+function dgp_hh(;n::Int64 = 200, m::Int64 = 2, s::Float64 = 0.2,
+                chisqmom::Int64 = 0, chisqdf::Int64 = 2, tmom::Int64 = 0,
+                tdf::Int64 = 3, minus::Bool = false)
+    ## Adapted from Hall and Horowitz (1996)
+    ## They consider s = {0.2, 0.4}
+    ## Notice that mu = - 9s^2/2
+    dgp_hh(n, m, s, chisqmom, chisqdf, tmom, tdf, minus)
+end
+                
+
+function momfhh_s02(theta::Vector)
+    n, m = size(W)
+    g = Array(eltype(theta), n, m+1)
+    mu = -9*0.2^2/2
+    for i = 1:n
+        @inbounds g[i, 1] = exp(mu - theta*X[i,1]+(3-theta)*Z[i,1])[1] - 1.0
+    end
+    for j = 2:m+1
+        for i = 1:n
+            @inbounds g[i, j] = g[i, 1]*W[i, j-1]
+        end
+    end
+    return g
+end
+
+function momfhh_s04(theta)
+    n, m = size(W)
+    g = Array(Float64, n, m+1)
+    mu = -9*0.4^2/2
+    for i = 1:n
+        @inbounds g[i, 1] = exp(mu - theta[1]*X[i,1]+(3-theta[1])*Z[i,1]) - 1.0
+    end
+
+    for j = 2:m+1
+        for i = 1:n
+            @inbounds g[i, j] = g[i, 1]*W[i, j-1]
+        end
+    end
+    return g
+end
 
 
 function randiv_ts(n::Int64  =128,
