@@ -6,15 +6,76 @@ export
   randiv, randiv_ts
 
 
-## OLS design with Homo-skedasticity
-## from: http://economics.mit.edu/files/7422
+chisq_02 = Chisq(2)
+tstud_02 = TDist(2)
+bdist_05 = Bernoulli(.5)
+
+function normm!(y::Array{Float64, 1}, x::Array{Float64, 2})
+    n, m = size(x)
+    for j=1:n
+        for s=1:m        
+           y[j] += x[j,s]^2
+        end
+        y[j] = y[j]^.5
+    end
+    return y
+end
+
+function normm(x::Array{Float64, 2})
+    y = zeros(Float64, size(x,1))
+    normm!(y, x)
+end
 
 
-## IV many + heteroskedasticity
-## from: http://econ.arizona.edu/docs/Seminar_Papers/Tiemen%20hetiv%202012%20feb.pdf
-    
-function sim_iv_d01!(Y::Vector, X::Matrix, Z::Matrix, ρ::Float64 = 0.3, ϕ::Float64 = 0.1, μ²::Float64 = 8.) 
-    ## http://econ.arizona.edu/docs/Seminar_Papers/Tiemen%20hetiv%202012%20feb.pdf
+function genma_one!(y::Vector, u::Vector, nu)    
+    for j = 2:length(u)
+        y[j] = u[j]+nu*u[j-1]
+    end 
+end
+
+function genar_one!(y::Vector, u::Vector, rho)    
+    for j = 2:length(u)
+        y[j] = rho*y[j-1] + u[j]
+    end 
+end
+
+
+
+############################################################################
+## Instrumental Variables
+##
+############################################################################
+
+function sim_iv_d01(;
+                    n::Int64        = 100,
+                    m::Int64         = 5,                    
+                    theta0::Float64  = 0.0,
+                    rho::Float64     = 0.9,
+                    CP::Int64        = 20)
+    ## OLS design with Homo-skedasticity
+    ## from: http://economics.mit.edu/files/7422
+    randiv(n, m, theta0, rho, CP)
+end
+
+function randiv(n::Int64        = 100,
+                m::Int64        = 5,
+                theta0::Float64 = 0.0,
+                rho::Float64    = 0.9,
+                CP::Int64       = 20)
+    tau     = fill(sqrt(CP/(m*n)), m)
+    z       = randn(n, m)
+    vi      = randn(n, 1)
+    eta     = randn(n, 1)
+    epsilon = rho*eta+sqrt(1-rho^2)*vi   
+    BLAS.gemm!('N', 'N', 1.0, z, tau, 1.0, eta)
+    BLAS.gemm!('N', 'N', 1.0, eta, [theta0], 1.0, epsilon)
+    return epsilon, eta, z
+end
+
+
+function sim_iv_d02!(Y::Vector, X::Matrix, Z::Matrix;
+                     ρ::Float64 = 0.3, ϕ::Float64 = 0.1, μ²::Float64 = 8.)
+    ## http://www.cemmap.ac.uk/wps/cwp2207.pdf
     ## Problem how to choose ϕ is not clear
     nx, p = size(X)
     nz, K = size(Z)
@@ -46,35 +107,38 @@ function sim_iv_d01!(Y::Vector, X::Matrix, Z::Matrix, ρ::Float64 = 0.3, ϕ::Flo
 end
 
 
-function randiv(;n::Int64        = 100,
-                m::Int64         = 5,
-                k::Int64         = 1,
-                theta0::Float64  = 0.0,
-                rho::Float64     = 0.9,
-                CP::Int64        = 20)
+function sim_iv_d03(; n = 100, m = 5, theta0 = 0.0, rho = 0.9, Pi = 0.1,
+                    design = 1, heteroskedastic = false)
+    Z = randn(n, m)
+    X = randn(n, 1)
+    if design == 1
+        u = randn(n)
+        V = randn(n)
+    elseif design == 2
+        w = rand(chisq_02, n)        
+        u = randn(n)/(w/2.0).^.5
+        V = rand(tstud_02, n)
+    elseif design == 3
+        u = randn(n).^2-1
+        V = randn(n)
+    elseif design == 4
+        b = rand(bdist_05, n)
+        u = randn(n)
+        u = b.*abs(u+2)-(1-b)*abs(u-2)
+        V = randn(n)
+    else
+        throw("Wrong design selected")
+    end
+    
+    if heteroskedastic
+        u = u.*normm(z)
+    end 
 
-    ## Generate IV Model with CP
-    randiv(n, m, k, theta0, rho, CP)
-end
+    Y = X*theta0 + u
+    X = Z[:,1]*Pi + V
 
-function randiv(n::Int64        = 100,
-                m::Int64         = 5,
-                k::Int64         = 1,
-                theta0::Float64  = 0.0,
-                rho::Float64     = 0.9,
-                CP::Int64        = 20)
-    ## Generate IV Model with CP
-    tau     = fill(sqrt(CP/(m*n)), m)
-    z       = randn(n, m)
-    vi      = randn(n, 1)
-    eta     = randn(n, 1)
-    epsilon = rho*eta+sqrt(1-rho^2)*vi   
-    BLAS.gemm!('N', 'N', 1.0, z, tau, 1.0, eta)
-    #x      = z*tau .+ eta    
-    #y      = x[:,1]*theta0 + epsilon
-    BLAS.gemm!('N', 'N', 1.0, eta, [theta0], 1.0, epsilon)
-    return epsilon, eta, z
-end
+    return Y, X, Z
+end 
 
 
 function dgp_hh(n::Int64 = 200, m::Int64 = 2, s::Float64 = 0.2,
